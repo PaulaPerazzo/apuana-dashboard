@@ -1,59 +1,66 @@
 import pandas as pd
+from database.sheet_connection import get_sheet_df
+import streamlit as st
 
-def get_job_monitor_requests(conn):
-    ### GET JOBS PER DAY 
-    df_jobs_per_day = pd.read_sql(
-        "SELECT submit, COUNT(jobid) FROM job_log WHERE submit >= '2025-01-01' GROUP BY submit ORDER BY submit DESC",
-        conn
+@st.cache_data
+def get_job_monitor_requests_from_sheets(spreadsheet_id: str):
+    df = get_sheet_df(spreadsheet_id, "job_log")
+    
+    df["submit"] = pd.to_datetime(df["submit"])
+    df = df[df["submit"] >= pd.to_datetime("2025-01-01")]
+    
+    df_jobs_per_day = (
+        df
+        .groupby(df["submit"].dt.date)
+        .size()
+        .reset_index(name="count")
+        .rename(columns={"submit": "submit"})
+        .sort_values("submit", ascending=False)
     )
+    
+    df["elapsed_td"] = pd.to_timedelta(df["elapsed"])
 
-    ### GET MIN TIME JOBS
-    df_min_exec_time = pd.read_sql(
-        "SELECT MIN(elapsed) AS min_elapsed FROM job_log LIMIT 50",
-        conn
+    min_td  = df["elapsed_td"].min()
+    mean_td = df["elapsed_td"].mean()
+    max_td  = df["elapsed_td"].max()
+
+    time_str      = str(min_td).split(".")[0]
+    mean_time_str = str(mean_td).split(".")[0]
+    max_time_str  = str(max_td).split(".")[0]
+    
+    df_top5 = (
+        df
+        .groupby("reqgpu")
+        .size()
+        .reset_index(name="count")
+        .sort_values("count", ascending=False)
+        .head(5)
     )
-    min_seconds = df_min_exec_time.loc[0, 'min_elapsed']
-    time_str = str(min_seconds).split(".")[0] 
-
-    ### GET MEAN EXEC TIME 
-    df_mean_exec_time = pd.read_sql(
-        "SELECT AVG(elapsed) AS mean_elapsed FROM job_log LIMIT 50",
-        conn
+    
+    df_plot_mem = (
+        df
+        .groupby("reqmem")
+        .size()
+        .reset_index(name="count")
     )
-    mean_seconds = df_mean_exec_time.loc[0, 'mean_elapsed']
-    mean_time_str = str(mean_seconds).split(".")[0]  
-
-    ### GET MAX EXEC TIME 
-    df_max_exec_time = pd.read_sql(
-        "SELECT MAX(elapsed) AS max_elapsed FROM job_log LIMIT 50",
-        conn
+    df_plot_mem["reqmem"] = df_plot_mem["reqmem"].fillna("Desconhecido")
+    df_plot_mem = df_plot_mem.sort_values("count", ascending=False).reset_index(drop=True)
+    
+    df_plot_cpu = (
+        df
+        .groupby("reqcpus")
+        .size()
+        .reset_index(name="count")
     )
-    max_seconds = df_max_exec_time.loc[0, 'max_elapsed']
-    max_time_str = str(max_seconds).split(".")[0] 
-
-    ### GET GPU REQUESTS
-    df_gpu_requests = pd.read_sql(
-        "SELECT reqgpu, count(reqgpu) as count FROM job_log GROUP BY reqgpu",
-        conn
+    df_plot_cpu["reqcpus"] = df_plot_cpu["reqcpus"].fillna("Desconhecido")
+    df_plot_cpu = df_plot_cpu.sort_values("count", ascending=False).reset_index(drop=True)
+    
+    return (
+        df_jobs_per_day,
+        time_str,
+        mean_time_str,
+        max_time_str,
+        df_top5,
+        df_plot_mem,
+        df_plot_cpu
     )
-    df_top5 = df_gpu_requests.sort_values(by='count', ascending=False).head(5)
-
-    ### GET MEMORY REQUESTS
-    df_mem_requests = pd.read_sql(
-        "SELECT reqmem, COUNT(*) AS count FROM job_log GROUP BY reqmem LIMIT 50",
-        conn
-    )
-    df_mem_requests['reqmem'] = df_mem_requests['reqmem'].fillna('Desconhecido')
-    df_mem_requests = df_mem_requests.sort_values(by='count', ascending=False)
-    df_plot_mem = df_mem_requests.reset_index(drop=True)
-
-    ### GET CPU REQUESTS
-    df_cpu_requests = pd.read_sql(
-        "SELECT reqcpus, COUNT(*) AS count FROM job_log GROUP BY reqcpus LIMIT 50",
-        conn
-    )
-    df_cpu_requests['reqcpus'] = df_cpu_requests['reqcpus'].fillna('Desconhecido')
-    df_cpu_requests = df_cpu_requests.sort_values(by='count', ascending=False)
-    df_plot_cpu = df_cpu_requests.reset_index(drop=True)
-
-    return df_jobs_per_day, time_str, mean_time_str, max_time_str, df_top5, df_plot_mem, df_plot_cpu

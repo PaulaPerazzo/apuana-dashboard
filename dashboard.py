@@ -4,26 +4,90 @@ import plotly.express as px
 import altair as alt
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from requests_db.job_monitor import get_job_monitor_requests
-from requests_db.utilization import get_utilization_data
-from requests_db.system_monitor import get_system_monitor_requests
-from requests_db.job_queue import get_jobs_queue
-from requests_db.node_info import get_node_info
-
-conn = get_database_connection()
-
-# ============= QUERIES ============= #
-
-df_jobs_per_day, time_str, mean_time_str, max_time_str, df_top5, df_plot_mem, df_plot_cpu = get_job_monitor_requests(conn)
-df_ocupation, df_idleness, df_indisp = get_utilization_data(conn)
-df_temp, df_mem_usage, _ = get_system_monitor_requests(conn)
-df_job_queue = get_jobs_queue(conn)
-df_node_info = get_node_info(conn)
-
-# ============= DASHBOARD ============= #
+from requests_db.job_monitor import get_job_monitor_requests_from_sheets
+from requests_db.utilization import get_utilization_data_from_sheets
+from requests_db.system_monitor import get_system_monitor_requests_from_sheets
+from requests_db.job_queue import get_jobs_queue_from_sheets
+from requests_db.node_info import get_node_info_from_sheets
+import pandas as pd
 
 st.set_page_config(layout="wide")
 st.title("Apuana Dashboard")
+
+col_start, col_end = st.columns(2)
+with col_start:
+    start_date = st.date_input(
+        "Data de Início",
+        value=pd.to_datetime("2025-01-01"),
+        max_value=pd.to_datetime("today")
+    )
+with col_end:
+    end_date = st.date_input(
+        "Data de Fim",
+        value=pd.to_datetime("today"),
+        min_value=start_date,
+        max_value=pd.to_datetime("today")
+    )
+
+# Converte para datetime (se vier como date)
+start_date = pd.to_datetime(start_date)
+end_date   = pd.to_datetime(end_date)
+
+# ============= QUERIES ============= #
+
+SPREADSHEET_ID = st.secrets["google_sheets"]["spreadsheet_id"]
+
+(df_jobs_per_day,time_str,mean_time_str,max_time_str,df_top5,df_plot_mem,df_plot_cpu) = get_job_monitor_requests_from_sheets(SPREADSHEET_ID)
+df_ocupation, df_idleness, df_indisp = get_utilization_data_from_sheets(SPREADSHEET_ID)
+df_temp, df_mem_usage, df_store = get_system_monitor_requests_from_sheets(SPREADSHEET_ID)
+df_job_queue = get_jobs_queue_from_sheets(SPREADSHEET_ID)
+df_node_info = get_node_info_from_sheets(SPREADSHEET_ID)
+
+df_jobs_per_day["submit"] = pd.to_datetime(df_jobs_per_day["submit"])
+
+df_jobs_per_day = df_jobs_per_day[
+    (df_jobs_per_day["submit"] >= start_date) &
+    (df_jobs_per_day["submit"] <= end_date)
+]
+
+idx_dates = df_ocupation.index.date
+start_d  = start_date.date()
+end_d    = end_date.date()
+
+mask = (idx_dates >= start_d) & (idx_dates <= end_d)
+df_ocupation = df_ocupation.loc[mask]
+
+# repete para idleness e indisp
+idx_dates = df_idleness.index.date
+df_idleness = df_idleness.loc[(idx_dates >= start_d) & (idx_dates <= end_d)]
+
+idx_dates = df_indisp.index.date
+df_indisp = df_indisp.loc[(idx_dates >= start_d) & (idx_dates <= end_d)]
+
+store_dates = df_store["time"].dt.date
+df_store = df_store.loc[
+    (store_dates >= start_d) &
+    (store_dates <= end_d)
+]
+
+df_node_info["last_updated"] = pd.to_datetime(df_node_info["last_updated"])
+node_dates = df_node_info["last_updated"].dt.date
+df_node_info = df_node_info.loc[
+    (node_dates >= start_d) &
+    (node_dates <= end_d)
+]
+
+start_ts = pd.to_datetime(start_date)
+end_ts   = pd.to_datetime(end_date) + pd.Timedelta(days=1)  
+
+df_store = df_store[
+    (df_store["time"] >= start_ts) &
+    (df_store["time"] < end_ts)
+]
+
+print(df_ocupation)
+
+# ============= DASHBOARD ============= #
 
 ####### JOB MONITOR #######
 st.subheader("Job Monitor")
@@ -105,22 +169,22 @@ with col2:
     st.write("Requisições de CPU")
     st.altair_chart(chart_cpu, use_container_width=False)
 
-######## UTILIZATION ########
+# ######## UTILIZATION ########
 st.subheader("Utilização")
 
 # ocupation
 st.write("Ocupação (%)")
-st.line_chart(df_ocupation.set_index('last_update'), width=1300, height=300, use_container_width=True)
+st.line_chart(df_ocupation, width=1300, height=300, use_container_width=True)
 
 # idleness
 st.write("Ociosidade (%)")
-st.line_chart(df_idleness.set_index('last_update'), width=1300, height=300, use_container_width=True)
+st.line_chart(df_idleness, width=1300, height=300, use_container_width=True)
 
 # unavailability
 st.write("Indisponibilidade (%)")
-st.line_chart(df_indisp.set_index('last_update'), width=1300, height=300, use_container_width=True)
+st.line_chart(df_indisp, width=1300, height=300, use_container_width=True)
 
-######## SYSTEM MONITOR ########
+# ######## SYSTEM MONITOR ########
 st.subheader("Monitoramento do Sistema")
 
 # nodes temperature
@@ -229,27 +293,30 @@ with col2_sys:
     st.plotly_chart(fig_usage, use_container_width=True)
 
 # storage
-# st.write("Armazenamento Diário (%)")
-# st.line_chart(df_store.set_index('time'), width=1300, height=300, use_container_width=True)
+st.write("Armazenamento Diário (%)")
+st.line_chart(df_store.set_index('time'), width=1300, height=300, use_container_width=True)
 
 # queue
 st.subheader("Fila de Jobs")
-st.write("Queue")
-page_size = 10
-total_rows = len(df_job_queue)
-total_pages = (total_rows - 1) // page_size + 1
 
-page = st.number_input("Página", min_value=1, max_value=total_pages, value=1, step=1)
+if df_job_queue.empty:
+    st.write("❗ Não há registros de jobs no período selecionado.")
 
-start_idx = (page - 1) * page_size
-end_idx = start_idx + page_size
+else:
+    st.write("Queue")
+    page_size = 10
+    total_rows = len(df_job_queue)
+    total_pages = (total_rows - 1) // page_size + 1
 
-st.dataframe(df_job_queue.iloc[start_idx:end_idx])
+    page = st.number_input("Página", min_value=1, max_value=total_pages, value=1, step=1)
+
+    start_idx = (page - 1) * page_size
+    end_idx = start_idx + page_size
+
+    st.dataframe(df_job_queue.iloc[start_idx:end_idx])
 
 # node info
 st.subheader("Informações dos Nodos")
 st.write("Node Info")
 
 st.dataframe(df_node_info.iloc[:10])
-
-conn.close()

@@ -1,2 +1,8 @@
 .venv
 .env
+.streamlit/secrets.toml
+./streamlit
+.streamlit
+/.streamlit
+.streamlit/
+database/gen-lang-client-0851945156-1962f7fa2b9e.json

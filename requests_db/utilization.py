@@ -1,22 +1,39 @@
 import pandas as pd
+import streamlit as st
+from database.sheet_connection import get_sheet_df
 
-def get_utilization_data(conn):
-    ### GET OCCUPATION
-    df_ocupation = pd.read_sql(
-        "SELECT ocupation, last_update FROM utilization WHERE last_update >= '01-01-2024' ORDER BY last_update DESC",
-        conn
+@st.cache_data
+def get_utilization_data_from_sheets(spreadsheet_id: str):
+    df = get_sheet_df(spreadsheet_id, "utilization")
+
+    for col in ["ocupation", "idle", "indisponibility"]:
+        df[col] = (
+            df[col]
+            .astype(str)
+            .str.replace(",", ".", regex=False)
+            .astype(float)
+        )
+    
+    df["last_update"] = pd.to_datetime(df["last_update"])
+    
+    cutoff = pd.to_datetime("2024-01-01")
+    df = df[df["last_update"] >= cutoff]
+    
+    df = df.sort_values("last_update", ascending=False).reset_index(drop=True)
+    
+    df_ocupation = (
+        df[["last_update", "ocupation"]]
+        .set_index("last_update")
     )
-
-    ### GET IDLENESS
-    df_idleness = pd.read_sql(
-        "SELECT idle, last_update FROM utilization WHERE last_update >= '01-01-2024' ORDER BY last_update DESC",
-        conn
+    df_idleness = (
+        df[["last_update", "idle"]]
+        .rename(columns={"idle": "idleness"})
+        .set_index("last_update")
     )
-
-    ### GET INDISPONIBILITY
-    df_indisp = pd.read_sql(
-        "SELECT indisponibility, last_update FROM utilization WHERE last_update >= '01-01-2024' ORDER BY last_update DESC",
-        conn
+    df_indisp = (
+        df[["last_update", "indisponibility"]]
+        .rename(columns={"indisponibility": "indisp"})
+        .set_index("last_update")
     )
-
+    
     return df_ocupation, df_idleness, df_indisp
