@@ -8,15 +8,18 @@ def get_job_monitor_requests_from_sheets(spreadsheet_id: str):
     
     df["submit"] = pd.to_datetime(df["submit"])
     df = df[df["submit"] >= pd.to_datetime("2025-01-01")]
-    
+
+    df["_date"] = df["submit"].dt.normalize()
+
     df_jobs_per_day = (
-        df
-        .groupby(df["submit"].dt.date)
-        .size()
+        df.groupby("_date")["jobid"]
+        .nunique()
         .reset_index(name="count")
-        .rename(columns={"submit": "submit"})
+        .rename(columns={"_date": "submit"})
         .sort_values("submit", ascending=False)
     )
+
+    print(df_jobs_per_day, "")
     
     df["elapsed_td"] = pd.to_timedelta(df["elapsed"])
 
