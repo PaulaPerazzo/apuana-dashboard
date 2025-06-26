@@ -18,8 +18,6 @@ def get_job_monitor_requests_from_sheets(spreadsheet_id: str):
         .rename(columns={"_date": "submit"})
         .sort_values("submit", ascending=False)
     )
-
-    print(df_jobs_per_day, "")
     
     df["elapsed_td"] = pd.to_timedelta(df["elapsed"])
 
