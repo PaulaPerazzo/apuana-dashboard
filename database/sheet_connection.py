@@ -16,6 +16,4 @@ def get_sheet_df(spreadsheet_id: str, sheet_name: str) -> pd.DataFrame:
     ws = sheet.worksheet(sheet_name)
     records = ws.get_all_records()
 
-    print("get sheet id")
-
     return pd.DataFrame.from_records(records)

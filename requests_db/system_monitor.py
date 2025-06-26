@@ -39,7 +39,5 @@ def get_system_monitor_requests_from_sheets(spreadsheet_id: str):
     df_store["time"]       = pd.to_datetime(df_store["time"], errors="coerce")
     df_store["use"]        = pd.to_numeric(df_store["usepercent"], errors="coerce")
     df_store = df_store[["time", "use"]]
-
-    print(df_store)
     
     return df_temp, df_mem_usage, df_store

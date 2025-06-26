@@ -1,4 +1,3 @@
-from database.database_connection import get_database_connection
 import streamlit as st
 import plotly.express as px
 import altair as alt
@@ -14,7 +13,7 @@ import pandas as pd
 st.set_page_config(layout="wide")
 st.title("Apuana Dashboard")
 
-col_start, col_end = st.columns(2)
+col_start, col_end, col_node = st.columns([1,1,1])
 with col_start:
     start_date = st.date_input(
         "Data de Início",
@@ -28,8 +27,14 @@ with col_end:
         min_value=start_date,
         max_value=pd.to_datetime("today")
     )
+with col_node:
+    nodos = [f"cluster-node{i}" for i in range(1,10)]
+    selected_node = st.selectbox(
+        "Selecionar Nodo",
+        ["Todos"] + nodos,
+        index=0
+    )
 
-# Converte para datetime (se vier como date)
 start_date = pd.to_datetime(start_date)
 end_date   = pd.to_datetime(end_date)
 
@@ -85,8 +90,15 @@ df_store = df_store[
     (df_store["time"] < end_ts)
 ]
 
-print(df_ocupation)
+if selected_node != "Todos":
+    df_temp      = df_temp[df_temp["hostname"] == selected_node]
+    df_mem_usage = df_mem_usage[df_mem_usage["hostname"] == selected_node]
+    
+    df_node_info = df_node_info[df_node_info["hostname"] == selected_node]
 
+    df_job_queue = df_job_queue[
+        df_job_queue["NODELIST"].str.contains(selected_node, na=False)
+    ]
 # ============= DASHBOARD ============= #
 
 ####### JOB MONITOR #######
